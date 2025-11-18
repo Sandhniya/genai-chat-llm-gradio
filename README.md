@@ -22,39 +22,56 @@ Deploy the app using platforms like Hugging Face Spaces, Streamlit Cloud, or a c
 
 ### PROGRAM:
 ```
-import gradio as gr
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import os
+import io
+import IPython.display
+from PIL import Image
+import base64 
+import requests 
+requests.adapters.DEFAULT_TIMEOUT = 60
 
-# Load the model and tokenizer
-model_name = "gpt2"  # Replace with your LLM
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name)
+from dotenv import load_dotenv, find_dotenv
+_ = load_dotenv(find_dotenv()) # read local .env file
+hf_api_key = os.environ['HF_API_KEY']
 
-# Function to interact with the model
-def chat_with_llm(user_input):
-    inputs = tokenizer.encode(user_input, return_tensors="pt")
-    outputs = model.generate(inputs, max_length=150, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return response
+# Helper function
+import requests, json
+from text_generation import Client
 
-# Gradio interface using Blocks
-with gr.Blocks() as chat_interface:
-    gr.Markdown("### Chat with LLM")
-    with gr.Row():
-        with gr.Column():
-            user_input = gr.Textbox(placeholder="Type your message here...")
-            send_button = gr.Button("Send")
-        with gr.Column():
-            chatbot = gr.Chatbot()
-    
-    # Define interaction
-    send_button.click(chat_with_llm, inputs=user_input, outputs=chatbot)
-    
-# Launch the interface
-chat_interface.launch()
+#FalcomLM-instruct endpoint on the text_generation library
+client = Client(os.environ['HF_API_FALCOM_BASE'], headers={"Authorization": f"Basic {hf_api_key}"}, timeout=120)
+
+def format_chat_prompt(message, chat_history):
+    prompt = ""
+    for turn in chat_history:
+        user_message, bot_message = turn
+        prompt = f"{prompt}\nUser: {user_message}\nAssistant: {bot_message}"
+    prompt = f"{prompt}\nUser: {message}\nAssistant:"
+    return prompt
+
+def respond(message, chat_history):
+        formatted_prompt = format_chat_prompt(message, chat_history)
+        bot_message = client.generate(formatted_prompt,
+                                     max_new_tokens=1024,
+                                     stop_sequences=["\nUser:", "<|endoftext|>"]).generated_text
+        chat_history.append((message, bot_message))
+        return "", chat_history
+
+with gr.Blocks() as demo:
+    chatbot = gr.Chatbot(height=240) #just to fit the notebook
+    msg = gr.Textbox(label="Prompt")
+    btn = gr.Button("Submit")
+    clear = gr.ClearButton(components=[msg, chatbot], value="Clear console")
+
+    btn.click(respond, inputs=[msg, chatbot], outputs=[msg, chatbot])
+    msg.submit(respond, inputs=[msg, chatbot], outputs=[msg, chatbot]) #Press enter to submit
+
+gr.close_all()
+demo.launch(share=True, server_port=int(os.environ['PORT3']))
 ```
 ### OUTPUT:
-![image](https://github.com/user-attachments/assets/12ba61bb-7c06-4268-92c8-5cadde5ace30)
+<img width="1185" height="623" alt="image" src="https://github.com/user-attachments/assets/e13cca60-cb93-44db-bb44-c480235b4df5" />
+!
 
 
 ### RESULT:
